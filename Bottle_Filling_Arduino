@@ -1,0 +1,89 @@
+#include <AFMotor.h>
+
+// Initialize motors from Adafruit Motor Shield v1
+AF_DCMotor motor1(1);  // M1
+AF_DCMotor motor2(2);  // M2
+
+// IR sensor analog pins
+const int irSensor1 = A1;
+const int irSensor2 = A2;
+
+// Threshold value (adjust based on actual readings)
+const int threshold = 500;
+
+void setup() {
+  Serial.begin(9600);
+
+  // Set motor speed (0-255)
+  motor1.setSpeed(200);
+  motor2.setSpeed(200);
+
+  Serial.println("Starting Motor 1...");
+  motor1.run(FORWARD);
+}
+
+void loop() {
+  static bool motor1StoppedAfterIR1 = false;
+  static bool motor2Ran = false;
+  static bool motor1Resumed = false;
+  static bool sequenceComplete = false;
+  static bool waitingToRestart = false;
+
+  int ir1Value = analogRead(irSensor1);
+  int ir2Value = analogRead(irSensor2);
+
+  // Step 1: Wait for IR Sensor 1 to detect object
+  if (!motor1StoppedAfterIR1 && ir1Value < threshold) {
+    Serial.println("IR Sensor 1 triggered. Stopping Motor 1...");
+    motor1.run(RELEASE);
+    motor1StoppedAfterIR1 = true;
+
+    delay(500);  // Small buffer delay
+
+    // 2-second delay before starting Motor 2
+    Serial.println("Waiting 2 seconds before starting Motor 2...");
+    delay(2000);
+
+    // Step 2: Start Motor 2 for 7 seconds
+    Serial.println("Starting Motor 2 for 7 seconds...");
+    motor2.run(FORWARD);
+    delay(7000);
+    motor2.run(RELEASE);
+    Serial.println("Motor 2 stopped.");
+    motor2Ran = true;
+  }
+
+  // Step 3: Resume Motor 1 after 1-second delay
+  if (motor2Ran && !motor1Resumed) {
+    Serial.println("Waiting 1 second before resuming Motor 1...");
+    delay(1000);
+    Serial.println("Resuming Motor 1...");
+    motor1.run(FORWARD);
+    motor1Resumed = true;
+  }
+
+  // Step 4: Stop Motor 1 when IR Sensor 2 detects object
+  if (motor1Resumed && ir2Value < threshold && !sequenceComplete) {
+    Serial.println("IR Sensor 2 triggered. Stopping Motor 1...");
+    motor1.run(RELEASE);
+    sequenceComplete = true;
+    waitingToRestart = true;
+    delay(1500);  // ✳️ Wait 1.5 seconds before restarting the sequence
+  }
+
+  // Step 5: Restart the loop after IR2 clears
+  if (sequenceComplete && ir2Value >= threshold && waitingToRestart) {
+    Serial.println("IR Sensor 2 cleared. Restarting sequence...");
+
+    // Reset flags to restart the loop
+    motor1StoppedAfterIR1 = false;
+    motor2Ran = false;
+    motor1Resumed = false;
+    sequenceComplete = false;
+    waitingToRestart = false;
+
+    delay(500);  // Small delay before restarting
+    Serial.println("Starting Motor 1 again...");
+    motor1.run(FORWARD);
+  }
+}
